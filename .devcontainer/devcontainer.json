@@ -1,0 +1,13 @@
+{
+  "name": "Sitelapse",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22-bookworm",
+  "containerEnv": {
+    "SITELAPSE_NO_SANDBOX": "1"
+  },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Sitelapse", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "npm install && npx playwright install --with-deps chromium",
+  "postAttachCommand": "npm start"
+}
