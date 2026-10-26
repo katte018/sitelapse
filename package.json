@@ -1,0 +1,18 @@
+{
+  "name": "sitelapse",
+  "version": "1.0.0",
+  "description": "Search a website and scrub through its history, frame by frame, from Wayback Machine captures.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "setup": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "express": "4.22.3",
+    "playwright": "1.63.0"
+  }
+}

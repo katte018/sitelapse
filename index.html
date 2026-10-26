@@ -1,0 +1,1394 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sitelapse</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Search any website and scrub through its history from Wayback Machine captures.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one centered stage. Home = headline, search, three examples.
+   Viewer = archived frame on top, scrubber under it, controls last. */
+:root {
+  --bg: #F3F4F6;
+  --surface: #FFFFFF;
+  --soft: #E9EBEF;
+  --ink: #0E1117;
+  --muted: #5F6673;
+  --line: #DDE0E6;
+  --accent: #2741D8;
+  --accent-soft: rgba(39, 65, 216, .16);
+  --on-ink: #FFFFFF;
+  --shadow: 0 1px 2px rgba(14, 17, 23, .05), 0 12px 32px -12px rgba(14, 17, 23, .18);
+
+  --font-ui: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --ease: cubic-bezier(.2, .7, .1, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B0D11; --surface: #14171D; --soft: #1B1F27; --ink: #E8EBF0; --muted: #8C94A3;
+    --line: #262B35; --accent: #8597FF; --accent-soft: rgba(133, 151, 255, .2); --on-ink: #0B0D11;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -16px rgba(0, 0, 0, .7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B0D11; --surface: #14171D; --soft: #1B1F27; --ink: #E8EBF0; --muted: #8C94A3;
+  --line: #262B35; --accent: #8597FF; --accent-soft: rgba(133, 151, 255, .2); --on-ink: #0B0D11;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -16px rgba(0, 0, 0, .7);
+  color-scheme: dark;
+}
+
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mono { font-family: var(--font-mono); font-size: .78em; letter-spacing: -.01em; }
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 76px;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  justify-self: start;
+  text-decoration: none; font-weight: 650; font-size: 17px; letter-spacing: -.02em;
+  background: none; border: 0; padding: 4px 0;
+}
+.brand svg { display: block; }
+.mode-pill {
+  justify-self: end;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 500; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px;
+  background: var(--surface);
+}
+.mode-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+/* ---------- search ---------- */
+.search { display: flex; gap: 10px; width: 100%; }
+.search__field {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  transition: border-color .2s, box-shadow .2s;
+}
+.search__field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.search__prefix { color: var(--muted); padding-left: 22px; user-select: none; }
+.search__field input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  padding: 0 20px 0 2px; height: 100%;
+}
+.search__field input::placeholder { color: var(--muted); opacity: .7; }
+.search__btn {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  border: 0; border-radius: 999px;
+  background: var(--ink); color: var(--on-ink);
+  font-weight: 600; letter-spacing: -.01em;
+  transition: transform .15s var(--ease), opacity .2s;
+}
+.search__btn:hover { transform: translateY(-1px); }
+.search__btn:active { transform: translateY(0); opacity: .85; }
+
+.search--hero .search__field { height: 64px; font-size: 18px; }
+.search--hero .search__btn { height: 64px; padding: 0 30px; font-size: 16px; }
+.search--mini { width: min(460px, 100%); }
+.search--mini .search__field { height: 42px; font-size: 14.5px; }
+.search--mini .search__prefix { padding-left: 16px; font-size: 11px; }
+.search--mini .search__btn { height: 42px; padding: 0 18px; font-size: 14px; }
+.field-error { color: #C2410C; font-size: 13.5px; min-height: 20px; margin: 10px 0 0 22px; }
+:root[data-theme="dark"] .field-error { color: #FDBA74; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .field-error { color: #FDBA74; } }
+
+/* ---------- segmented range control ---------- */
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--soft); border-radius: 999px;
+}
+.seg button {
+  border: 0; background: transparent; color: var(--muted);
+  height: 30px; padding: 0 13px; border-radius: 999px;
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  transition: background .2s, color .2s;
+}
+.seg button:hover { color: var(--ink); }
+.seg button[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* ---------- home ---------- */
+.home {
+  width: 100%; max-width: 980px;
+  margin: clamp(40px, 11vh, 132px) auto 56px;
+  animation: rise .6s var(--ease) both;
+}
+.home h1 {
+  font-size: clamp(2.35rem, 5.6vw, 4.4rem);
+  line-height: 1.02; letter-spacing: -.045em; font-weight: 650;
+  margin: 0; max-width: 13ch; text-wrap: balance;
+}
+.home h1 em { font-style: normal; color: var(--accent); }
+.lede {
+  color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.15rem);
+  max-width: 52ch; margin: 18px 0 40px; text-wrap: pretty;
+}
+.home-options { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 0 6px; }
+.home-options span { color: var(--muted); font-size: 13px; }
+
+.examples {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+  margin-top: 64px;
+}
+.examples h2 {
+  grid-column: 1 / -1; margin: 0 0 4px;
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+}
+.example {
+  text-align: left;
+  display: grid; gap: 18px;
+  padding: 20px 20px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  transition: transform .25s var(--ease), border-color .2s, box-shadow .25s;
+}
+.example:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: var(--shadow); }
+.example__rail { position: relative; height: 22px; }
+.example__rail::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: var(--line); border-radius: 2px; }
+.example__rail i { position: absolute; top: 50%; width: 1.5px; height: 10px; margin: -5px 0 0 -.75px; background: var(--muted); opacity: .45; }
+.example__rail b {
+  position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border-radius: 50%; background: var(--surface); border: 2px solid var(--accent);
+  transition: left .6s var(--ease);
+}
+.example__name { font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+.example__meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 13px; }
+
+/* ---------- viewer ---------- */
+.viewer {
+  --stage: clamp(min(100%, 420px), calc((100dvh - 330px) * 1.6), min(100%, 1120px));
+  width: 100%;
+  display: grid; justify-items: center;
+  margin: 4px auto 40px;
+  animation: rise .5s var(--ease) both;
+}
+.stage { width: var(--stage); max-width: 100%; display: grid; gap: 22px; }
+
+.frame {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.frame__bar {
+  display: flex; align-items: center; gap: 14px;
+  height: 46px; padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.frame__url { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame__ts { color: var(--muted); white-space: nowrap; }
+.frame__link {
+  margin-left: auto; flex: none;
+  font-size: 13px; color: var(--muted); text-decoration: none; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.frame__link:hover { color: var(--ink); }
+.frame__screen {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  max-width: 100%;
+  background: var(--soft);
+  overflow: hidden;
+}
+.frame__screen canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  transition: opacity .5s var(--ease), filter .5s var(--ease);
+}
+.is-loading .frame__screen canvas { opacity: .4; filter: saturate(.3) blur(2px); }
+
+.overlay {
+  position: absolute; inset: 0;
+  display: grid; place-content: center; justify-items: center; gap: 12px;
+  text-align: center; padding: 24px;
+}
+.overlay__title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.overlay__sub { color: var(--muted); font-size: 13px; }
+.overlay__bar { width: min(240px, 60vw); height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.overlay__bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .35s var(--ease); }
+.overlay__bar.indeterminate span { width: 35%; animation: slide 1.1s ease-in-out infinite; }
+.overlay p { margin: 0; max-width: 46ch; color: var(--muted); text-wrap: pretty; }
+.overlay .search__btn { height: 40px; padding: 0 18px; font-size: 14px; margin-top: 6px; }
+
+/* ---------- scrubber ---------- */
+.scrubber {
+  position: relative;
+  height: 78px;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.scrubber__inner { position: absolute; top: 0; bottom: 0; left: 13px; right: 13px; } /* keeps the thumb inside the frame's edges */
+.scrubber.dragging { cursor: grabbing; }
+.scrubber[aria-disabled="true"] { cursor: default; }
+.scrubber:focus-visible { outline: none; }
+.scrubber:focus-visible .thumb { box-shadow: 0 0 0 5px var(--accent-soft), 0 2px 8px rgba(0,0,0,.18); }
+
+.rail { position: absolute; left: 0; right: 0; top: 32px; height: 4px; border-radius: 4px; background: var(--line); }
+.rail__fill {
+  position: absolute; inset: 0; border-radius: 4px; background: var(--accent);
+  transform-origin: left center; transform: scaleX(0);
+}
+.ticks { position: absolute; left: 0; right: 0; top: 34px; }
+.tick {
+  position: absolute; top: 0; width: 1.5px; height: 12px; margin: -6px 0 0 -.75px;
+  background: var(--muted); border-radius: 1px;
+  opacity: .5; transition: opacity .3s, transform .3s var(--ease);
+}
+.tick.pending { opacity: .14; transform: scaleY(.5); }
+.tick.skip { opacity: 0; }
+.years { position: absolute; left: 0; right: 0; top: 2px; height: 16px; }
+.year {
+  position: absolute; top: 0; transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted);
+  white-space: nowrap; transition: color .2s;
+}
+.year.active { color: var(--ink); }
+.thumb {
+  position: absolute; left: 0; top: 34px;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  transition: width .2s var(--ease), height .2s var(--ease), margin .2s var(--ease), opacity .3s;
+  will-change: transform;
+}
+.dragging .thumb { width: 30px; height: 30px; margin: -15px 0 0 -15px; }
+.scrubber[aria-disabled="true"] .thumb { opacity: 0; }
+.thumb-label {
+  position: absolute; left: 0; top: 54px;
+  font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  will-change: transform;
+}
+.scrubber[aria-disabled="true"] .thumb-label { opacity: 0; }
+
+/* ---------- controls ---------- */
+.controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.play {
+  flex: none; width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); background: var(--surface);
+  transition: border-color .2s, transform .15s var(--ease);
+}
+.play:hover { border-color: var(--ink); }
+.play:active { transform: scale(.94); }
+.play:disabled { opacity: .4; cursor: default; }
+.play svg { width: 16px; height: 16px; fill: currentColor; }
+.meta { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; min-width: 0; }
+.meta strong { color: var(--ink); font-weight: 600; }
+.controls .seg { margin-left: auto; }
+.hint { color: var(--muted); font-size: 12.5px; text-align: center; margin: 0; }
+.hint kbd {
+  font-family: var(--font-mono); font-size: 10.5px;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; background: var(--surface);
+}
+.preview-note {
+  margin: 0; padding: 12px 16px;
+  border: 1px dashed var(--line); border-radius: var(--radius-md);
+  color: var(--muted); font-size: 13px;
+}
+.preview-note a { color: var(--ink); }
+
+.foot {
+  margin-top: auto;
+  width: 100%; max-width: 1240px; margin-left: auto; margin-right: auto;
+  padding-block: 22px 26px;
+  color: var(--muted); font-size: 12.5px;
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes slide { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
+
+@media (max-width: 760px) {
+  .topbar { grid-template-columns: 1fr auto; padding-block: 12px; }
+  .topbar .search--mini { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .search--hero { flex-direction: column; }
+  .search--hero .search__field, .search--hero .search__btn { height: 56px; }
+  .search--hero .search__field { font-size: 16px; }
+  .examples { grid-template-columns: 1fr; margin-top: 44px; }
+  .controls .seg { margin-left: 0; width: 100%; justify-content: space-between; }
+  .frame__ts { display: none; }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <button class="brand" id="brand" type="button" aria-label="Sitelapse home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <line x1="2" y1="13" x2="24" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".28"/>
+        <line x1="2" y1="13" x2="15" y2="13" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="15" cy="13" r="5.5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.2"/>
+      </svg>
+      Sitelapse
+    </button>
+    <form class="search search--mini" id="miniForm" hidden autocomplete="off">
+      <label class="search__field">
+        <span class="search__prefix mono">https://</span>
+        <span class="sr-only">Website address</span>
+        <input id="miniInput" name="url" type="text" inputmode="url" spellcheck="false" placeholder="apple.com">
+      </label>
+      <button class="search__btn" type="submit">Go</button>
+    </form>
+    <span class="mode-pill" id="modePill" hidden title="Live capture needs the Sitelapse server. This page is showing sample frames.">Preview · sample frames</span>
+  </header>
+
+  <main>
+    <section class="home" id="home" aria-labelledby="homeTitle">
+      <h1 id="homeTitle">Watch any website <em>grow up</em>.</h1>
+      <p class="lede">Type an address. Sitelapse collects saved copies from the Wayback Machine and lines them up on one timeline you can drag through, year by year.</p>
+
+      <form class="search search--hero" id="heroForm" autocomplete="off" novalidate>
+        <label class="search__field">
+          <span class="search__prefix mono">https://</span>
+          <span class="sr-only">Website address</span>
+          <input id="heroInput" name="url" type="text" inputmode="url" spellcheck="false" placeholder="apple.com" autofocus>
+        </label>
+        <button class="search__btn" type="submit">
+          Build timeline
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </form>
+      <div class="field-error" id="heroError" role="alert"></div>
+      <div class="home-options">
+        <span id="homeRangeLabel">Range</span>
+        <div class="seg" role="radiogroup" aria-labelledby="homeRangeLabel" data-range-group></div>
+      </div>
+
+      <div class="examples" id="examples">
+        <h2>Try one</h2>
+      </div>
+    </section>
+
+    <section class="viewer" id="viewer" hidden aria-label="Timeline viewer">
+      <div class="stage">
+        <div class="frame" id="frame">
+          <div class="frame__bar">
+            <span class="frame__url" id="frameUrl">example.com</span>
+            <span class="frame__ts mono" id="frameTs"></span>
+            <a class="frame__link" id="frameLink" href="https://web.archive.org/" target="_blank" rel="noopener">
+              <span id="frameLinkText">Open capture</span>
+              <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2 2.5 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </a>
+          </div>
+          <div class="frame__screen" id="screen">
+            <canvas id="canvas" aria-label="Archived page" role="img"></canvas>
+            <div class="overlay" id="overlay">
+              <div class="overlay__title" id="phaseTitle">Looking up captures</div>
+              <div class="overlay__bar indeterminate" id="phaseBar"><span></span></div>
+              <div class="overlay__sub mono" id="phaseSub">&nbsp;</div>
+            </div>
+            <div class="overlay" id="errorBox" hidden>
+              <div class="overlay__title" id="errorTitle">No captures found</div>
+              <p id="errorText"></p>
+              <button class="search__btn" type="button" id="errorAction">Try all time</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="scrubber" id="scrubber" role="slider" tabindex="0" aria-label="Capture date" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-disabled="true">
+          <div class="scrubber__inner" id="track">
+            <div class="years" id="years"></div>
+            <div class="rail"><div class="rail__fill" id="fill"></div></div>
+            <div class="ticks" id="ticks"></div>
+            <div class="thumb" id="thumb"></div>
+            <div class="thumb-label" id="thumbLabel"></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="play" id="playBtn" type="button" aria-label="Play timelapse" disabled>
+            <svg viewBox="0 0 16 16" id="playIcon" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>
+          </button>
+          <div class="meta" id="meta">&nbsp;</div>
+          <div class="seg" role="radiogroup" aria-label="Range" data-range-group></div>
+        </div>
+        <p class="hint">Drag the slider, use <kbd>←</kbd> <kbd>→</kbd>, or press <kbd>Space</kbd> to play.</p>
+        <p class="preview-note" id="previewNote" hidden></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Snapshots come from the Internet Archive's Wayback Machine.</span>
+    <a href="https://archive.org/donate" target="_blank" rel="noopener">Support the Internet Archive</a>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------------- config ----------------
+  const RANGES = [
+    { key: '1y', label: 'Last year', short: '1Y', frames: 12, years: 1 },
+    { key: '5y', label: '5 years', short: '5Y', frames: 20, years: 5 },
+    { key: '10y', label: '10 years', short: '10Y', frames: 24, years: 10 },
+    { key: 'all', label: 'All time', short: 'All', frames: 30, years: 23 },
+  ];
+  const EXAMPLES = [
+    { url: 'apple.com', range: 'all', note: 'Product pages since the 90s' },
+    { url: 'nytimes.com', range: '10y', note: 'A front page, redesigned' },
+    { url: 'github.com', range: '5y', note: 'Recent interface changes' },
+  ];
+  const PLAY_MS_PER_FRAME = 780;
+  const HOLD = 0.38; // share of each step spent holding on a frame while playing
+  const INSET = 13;  // matches .scrubber__inner side offset
+
+  // ---------------- dom ----------------
+  const $ = (id) => document.getElementById(id);
+  const root = document.documentElement;
+  const el = {
+    home: $('home'), viewer: $('viewer'), miniForm: $('miniForm'), miniInput: $('miniInput'),
+    heroForm: $('heroForm'), heroInput: $('heroInput'), heroError: $('heroError'),
+    modePill: $('modePill'), examples: $('examples'), brand: $('brand'),
+    frame: $('frame'), frameUrl: $('frameUrl'), frameTs: $('frameTs'), frameLink: $('frameLink'), frameLinkText: $('frameLinkText'),
+    screen: $('screen'), canvas: $('canvas'), overlay: $('overlay'),
+    phaseTitle: $('phaseTitle'), phaseBar: $('phaseBar'), phaseSub: $('phaseSub'),
+    errorBox: $('errorBox'), errorTitle: $('errorTitle'), errorText: $('errorText'), errorAction: $('errorAction'),
+    scrubber: $('scrubber'), track: $('track'), years: $('years'), fill: $('fill'), ticks: $('ticks'), thumb: $('thumb'), thumbLabel: $('thumbLabel'),
+    playBtn: $('playBtn'), playIcon: $('playIcon'), meta: $('meta'), previewNote: $('previewNote'),
+  };
+  const ctx = el.canvas.getContext('2d', { alpha: false });
+
+  // ---------------- state ----------------
+  const state = {
+    mode: null,          // 'live' | 'preview'
+    run: 0,
+    es: null,
+    target: null,        // { href, display, host }
+    range: 'all',
+    frames: [],          // [{ ts, archiveUrl }]
+    slots: [],           // bitmaps by frame index while loading
+    bitmaps: [],         // final, in order
+    ready: false,
+    pos: 0,
+    goal: 0,
+    dragging: false,
+    playing: false,
+    playPos: 0,
+    lastTime: 0,
+    raf: 0,
+    shownIndex: -1,
+    drawnPos: -1,
+    trackW: 0,
+  };
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------------- utils ----------------
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const tsDate = (ts) => new Date(Date.UTC(+ts.slice(0, 4), +ts.slice(4, 6) - 1, +ts.slice(6, 8) || 1, +ts.slice(8, 10) || 0, +ts.slice(10, 12) || 0));
+  const fmtDay = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const fmtMonth = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const toTs = (d) => d.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+  const rangeOf = (key) => RANGES.find((r) => r.key === key) || RANGES[3];
+
+  function normalize(raw) {
+    let s = String(raw || '').trim();
+    if (!s) return null;
+    if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+    let u;
+    try { u = new URL(s); } catch { return null; }
+    const host = u.hostname.toLowerCase().replace(/^www\./, '');
+    if (!host.includes('.') || /\s/.test(host)) return null;
+    const pathPart = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '');
+    return { href: u.href, host, display: host + pathPart + u.search };
+  }
+
+  // ---------------- mode detection ----------------
+  const modeReady = (async () => {
+    try {
+      const res = await fetch('api/health', { cache: 'no-store' });
+      if (!res.ok) throw new Error('no server');
+      const j = await res.json();
+      return j && j.ok ? 'live' : 'preview';
+    } catch {
+      return 'preview';
+    }
+  })().then((m) => {
+    state.mode = m;
+    el.modePill.hidden = m !== 'preview';
+    return m;
+  });
+
+  // ---------------- range controls ----------------
+  function renderRangeGroups() {
+    document.querySelectorAll('[data-range-group]').forEach((group) => {
+      group.textContent = '';
+      for (const r of RANGES) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(r.key === state.range));
+        b.dataset.range = r.key;
+        b.textContent = r.label;
+        group.appendChild(b);
+      }
+    });
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-range-group] button');
+    if (!b) return;
+    const key = b.dataset.range;
+    const inViewer = !!b.closest('.viewer');
+    state.range = key;
+    renderRangeGroups();
+    if (inViewer && state.target) startSearch(state.target.display, key);
+  });
+
+  // ---------------- examples ----------------
+  function renderExamples() {
+    EXAMPLES.forEach((ex, n) => {
+      const r = rangeOf(ex.range);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'example';
+      const ticks = Array.from({ length: 9 }, (_, i) => `<i style="left:${4 + i * 11.5}%"></i>`).join('');
+      b.innerHTML = `<div class="example__rail" aria-hidden="true">${ticks}<b style="left:${[26, 61, 84][n]}%"></b></div>
+        <div><div class="example__name"></div>
+        <div class="example__meta"><span class="example__note"></span><span class="mono">${r.short}</span></div></div>`;
+      b.querySelector('.example__name').textContent = ex.url;
+      b.querySelector('.example__note').textContent = ex.note;
+      b.setAttribute('aria-label', `Build timeline for ${ex.url}, ${r.label}`);
+      b.addEventListener('mouseenter', () => { b.querySelector('b').style.left = '96%'; });
+      b.addEventListener('mouseleave', () => { b.querySelector('b').style.left = [26, 61, 84][n] + '%'; });
+      b.addEventListener('click', () => { state.range = ex.range; renderRangeGroups(); startSearch(ex.url, ex.range); });
+      el.examples.appendChild(b);
+    });
+  }
+
+  // ---------------- views ----------------
+  function showHome() {
+    cancelRun();
+    el.viewer.hidden = true;
+    el.miniForm.hidden = true;
+    el.home.hidden = false;
+    el.heroInput.focus({ preventScroll: true });
+    try { history.replaceState(null, '', location.pathname); } catch {}
+  }
+  function showViewer() {
+    el.home.hidden = true;
+    el.viewer.hidden = false;
+    el.miniForm.hidden = false;
+    measure();
+  }
+
+  function setPhase(title, sub, progress) {
+    el.overlay.hidden = false;
+    el.errorBox.hidden = true;
+    el.phaseTitle.textContent = title;
+    el.phaseSub.textContent = sub || ' ';
+    if (progress == null) {
+      el.phaseBar.classList.add('indeterminate');
+      el.phaseBar.firstElementChild.style.width = '';
+    } else {
+      el.phaseBar.classList.remove('indeterminate');
+      el.phaseBar.firstElementChild.style.width = Math.round(progress * 100) + '%';
+    }
+  }
+
+  function showError(title, text, action) {
+    el.frame.parentElement.classList.remove('is-loading');
+    el.overlay.hidden = true;
+    el.errorBox.hidden = false;
+    el.errorTitle.textContent = title;
+    el.errorText.textContent = text;
+    if (action) {
+      el.errorAction.hidden = false;
+      el.errorAction.textContent = action.label;
+      el.errorAction.onclick = action.run;
+    } else {
+      el.errorAction.hidden = true;
+    }
+    el.meta.textContent = ' ';
+  }
+
+  // ---------------- search lifecycle ----------------
+  function cancelRun() {
+    state.run++;
+    if (state.es) { state.es.close(); state.es = null; }
+    stopPlay();
+  }
+
+  function resetViewer(target) {
+    state.frames = [];
+    state.slots = [];
+    state.bitmaps.forEach((b) => b.close && b.close());
+    state.bitmaps = [];
+    state.ready = false;
+    state.loadingBmp = null;
+    state.pos = state.goal = state.playPos = 0;
+    state.shownIndex = -1;
+    state.drawnPos = -1;
+    el.frame.parentElement.classList.add('is-loading');
+    el.frameUrl.textContent = target.display;
+    el.frameTs.textContent = '';
+    el.frameLink.href = `https://web.archive.org/web/*/${target.display}`;
+    el.frameLinkText.textContent = 'All captures';
+    el.ticks.textContent = '';
+    el.years.textContent = '';
+    el.thumbLabel.textContent = '';
+    el.meta.innerHTML = '&nbsp;';
+    el.playBtn.disabled = true;
+    el.scrubber.setAttribute('aria-disabled', 'true');
+    el.scrubber.setAttribute('aria-valuemax', '0');
+    el.fill.style.transform = 'scaleX(0)';
+    ctx.fillStyle = getComputedStyle(root).getPropertyValue('--soft').trim() || '#e9ebef';
+    ctx.fillRect(0, 0, el.canvas.width, el.canvas.height);
+    setPhase('Looking up captures', target.display);
+  }
+
+  async function startSearch(raw, range) {
+    const target = normalize(raw);
+    if (!target) {
+      const msg = 'Enter a web address, like apple.com';
+      if (!el.home.hidden) { el.heroError.textContent = msg; el.heroInput.focus(); }
+      else { el.miniInput.setCustomValidity(msg); el.miniInput.reportValidity(); setTimeout(() => el.miniInput.setCustomValidity(''), 2000); }
+      return;
+    }
+    el.heroError.textContent = '';
+    cancelRun();
+    const run = state.run;
+    state.target = target;
+    state.range = range || state.range;
+    renderRangeGroups();
+    el.miniInput.value = target.display;
+    el.heroInput.value = target.display;
+    showViewer();
+    resetViewer(target);
+
+    const mode = state.mode || await modeReady;
+    if (run !== state.run) return;
+    if (mode === 'live') {
+      try { history.replaceState(null, '', `?url=${encodeURIComponent(target.display)}&range=${state.range}`); } catch {}
+      runLive(target, state.range, run);
+    } else {
+      runPreview(target, state.range, run);
+    }
+  }
+
+  // ---- live: server-sent events from server.js ----
+  function runLive(target, range, run) {
+    const es = new EventSource('api/capture?' + new URLSearchParams({ url: target.href, range }));
+    state.es = es;
+    let finished = false;
+    let total = 0;
+    let settled = 0;
+    let captured = 0;
+    let totalCaptures = 0;
+    const pending = new Set();
+    const live = () => run === state.run;
+
+    const bump = () => {
+      settled++;
+      setPhase(`Capturing ${total} snapshots`, `${captured} of ${total} ready`, settled / total);
+    };
+
+    es.addEventListener('meta', (e) => {
+      if (!live()) return;
+      const d = JSON.parse(e.data);
+      state.frames = d.frames;
+      state.slots = new Array(d.frames.length).fill(null);
+      total = d.frames.length;
+      totalCaptures = d.total;
+      buildTicks(true);
+      setPhase(`Capturing ${total} snapshots`, `0 of ${total} ready · first run takes a minute`, 0.02);
+    });
+    es.addEventListener('frame', (e) => {
+      if (!live()) return;
+      const d = JSON.parse(e.data);
+      const p = loadBitmap(d.src).then((bmp) => {
+        if (!live()) { bmp.close && bmp.close(); return; }
+        state.slots[d.i] = bmp;
+        captured++;
+        markTick(d.i, 'ready');
+        drawLoadingFrame(bmp, d.i);
+      }).catch(() => {
+        if (live()) markTick(d.i, 'skip');
+      }).finally(() => { pending.delete(p); if (live()) bump(); });
+      pending.add(p);
+    });
+    es.addEventListener('skip', (e) => {
+      if (!live()) return;
+      const d = JSON.parse(e.data);
+      markTick(d.i, 'skip');
+      bump();
+    });
+    es.addEventListener('done', async () => {
+      finished = true;
+      es.close();
+      await Promise.allSettled([...pending]);
+      if (live()) finalize({ totalCaptures });
+    });
+    es.addEventListener('fail', (e) => {
+      finished = true;
+      es.close();
+      if (!live()) return;
+      const d = JSON.parse(e.data);
+      if (d.reason === 'no_captures') {
+        const wider = state.range !== 'all';
+        showError(`No captures of ${target.display}`, d.message + (wider ? ' Try a wider range, or the site’s main domain.' : ' Try the site’s main domain.'),
+          wider ? { label: 'Try all time', run: () => startSearch(target.display, 'all') } : null);
+      } else {
+        showError('Could not build the timeline', d.message, { label: 'Try again', run: () => startSearch(target.display, state.range) });
+      }
+    });
+    es.onerror = () => {
+      if (finished || !live()) return;
+      finished = true;
+      es.close();
+      showError('Lost the connection', 'The capture server stopped responding. Check that it is still running, then try again.',
+        { label: 'Try again', run: () => startSearch(target.display, state.range) });
+    };
+  }
+
+  async function loadBitmap(src) {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    await img.decode();
+    if ('createImageBitmap' in window) {
+      const w = Math.min(img.naturalWidth, Math.max(960, Math.round(el.canvas.width * 1.1)));
+      try {
+        return await createImageBitmap(img, { resizeWidth: w, resizeHeight: Math.round(img.naturalHeight * (w / img.naturalWidth)), resizeQuality: 'high' });
+      } catch {
+        return await createImageBitmap(img);
+      }
+    }
+    return img;
+  }
+
+  // ---- preview: sample frames drawn in the browser ----
+  async function runPreview(target, range, run) {
+    const r = rangeOf(range);
+    const end = new Date();
+    end.setUTCDate(1);
+    end.setUTCMonth(end.getUTCMonth() - 1);
+    const start = new Date(end);
+    start.setUTCMonth(start.getUTCMonth() - Math.round(r.years * 12) + (r.key === '1y' ? 1 : 0));
+    const n = r.frames;
+    const frames = [];
+    for (let i = 0; i < n; i++) {
+      const t = start.getTime() + ((end.getTime() - start.getTime()) * i) / (n - 1);
+      const d = new Date(t);
+      d.setUTCDate(1 + ((i * 7) % 26));
+      d.setUTCHours((i * 5) % 24, (i * 13) % 60, (i * 29) % 60);
+      frames.push({ ts: toTs(d), archiveUrl: `https://web.archive.org/web/${toTs(d)}/${target.display}` });
+    }
+    await sleep(650);
+    if (run !== state.run) return;
+    state.frames = frames;
+    state.slots = new Array(n).fill(null);
+    buildTicks(true);
+    setPhase(`Drawing ${n} sample frames`, `0 of ${n} ready`, 0.02);
+    const off = document.createElement('canvas');
+    off.width = 1280; off.height = 800;
+    const octx = off.getContext('2d');
+    for (let i = 0; i < n; i++) {
+      await sleep(55 + Math.random() * 70);
+      if (run !== state.run) return;
+      const d = tsDate(frames[i].ts);
+      drawSampleSite(octx, d.getUTCFullYear() + d.getUTCMonth() / 12, i);
+      const bmp = 'createImageBitmap' in window ? await createImageBitmap(off) : cloneCanvas(off);
+      if (run !== state.run) { bmp.close && bmp.close(); return; }
+      state.slots[i] = bmp;
+      markTick(i, 'ready');
+      drawLoadingFrame(bmp, i);
+      setPhase(`Drawing ${n} sample frames`, `${i + 1} of ${n} ready`, (i + 1) / n);
+    }
+    finalize({ totalCaptures: n });
+  }
+  function cloneCanvas(c) { const k = document.createElement('canvas'); k.width = c.width; k.height = c.height; k.getContext('2d').drawImage(c, 0, 0); return k; }
+
+  function finalize({ totalCaptures }) {
+    const keep = [];
+    state.frames.forEach((f, i) => { if (state.slots[i]) keep.push([f, state.slots[i]]); });
+    state.frames = keep.map((k) => k[0]);
+    state.bitmaps = keep.map((k) => k[1]);
+    state.slots = [];
+    if (state.bitmaps.length === 0) {
+      showError('No snapshots could be rendered', 'The archive had captures, but none of them loaded in time. Archived pages can be slow; try again in a minute.',
+        { label: 'Try again', run: () => startSearch(state.target.display, state.range) });
+      return;
+    }
+    state.ready = true;
+    el.frame.parentElement.classList.remove('is-loading');
+    el.overlay.hidden = true;
+    buildTicks(false);
+    const n = state.bitmaps.length;
+    el.scrubber.setAttribute('aria-disabled', n > 1 ? 'false' : 'true');
+    el.scrubber.setAttribute('aria-valuemax', String(n - 1));
+    el.playBtn.disabled = n < 2;
+    const first = tsDate(state.frames[0].ts);
+    const last = tsDate(state.frames[n - 1].ts);
+    const span = n > 1 ? `${fmtMonth.format(first)} – ${fmtMonth.format(last)}` : fmtMonth.format(first);
+    const extra = state.mode === 'live' && totalCaptures > n ? ` from ${totalCaptures} monthly captures` : '';
+    el.meta.innerHTML = `<strong>${n} frames</strong>${extra} · ${span}`;
+    el.previewNote.hidden = state.mode !== 'preview';
+    if (state.mode === 'preview') {
+      el.previewNote.innerHTML = '';
+      el.previewNote.append(
+        'These are sample frames drawn in your browser to show how the slider works. Run the Sitelapse server to capture real snapshots of ',
+        Object.assign(document.createElement('strong'), { textContent: state.target.display }),
+        ', or ',
+      );
+      const a = Object.assign(document.createElement('a'), { href: `https://web.archive.org/web/*/${state.target.display}`, target: '_blank', rel: 'noopener', textContent: 'browse its captures on the Wayback Machine' });
+      el.previewNote.append(a, '.');
+    }
+    state.pos = state.goal = 0;
+    state.drawnPos = -1;
+    state.shownIndex = -1;
+    measure();
+    paint(true);
+    if (!el.viewer.contains(document.activeElement) && document.activeElement !== el.miniInput) el.scrubber.focus({ preventScroll: true });
+  }
+
+  // ---------------- ticks & labels ----------------
+  function buildTicks(pending) {
+    const n = state.frames.length;
+    el.ticks.textContent = '';
+    el.years.textContent = '';
+    const frag = document.createDocumentFragment();
+    const yfrag = document.createDocumentFragment();
+    let lastYear = null;
+    state.frames.forEach((f, i) => {
+      const left = n > 1 ? (i / (n - 1)) * 100 : 50;
+      const t = document.createElement('span');
+      t.className = 'tick' + (pending ? (state.slots[i] ? '' : ' pending') : '');
+      t.style.left = left + '%';
+      frag.appendChild(t);
+      const y = f.ts.slice(0, 4);
+      if (y !== lastYear) {
+        const s = document.createElement('span');
+        s.className = 'year';
+        s.textContent = y;
+        s.style.left = left + '%';
+        s.dataset.i = i;
+        yfrag.appendChild(s);
+        lastYear = y;
+      }
+    });
+    el.ticks.appendChild(frag);
+    el.years.appendChild(yfrag);
+    thinYears();
+  }
+  function markTick(i, cls) {
+    const t = el.ticks.children[i];
+    if (t) t.className = 'tick' + (cls === 'ready' ? '' : ' ' + cls);
+  }
+  function thinYears() {
+    const w = state.trackW || el.track.clientWidth;
+    let lastRight = -Infinity;
+    for (const s of el.years.children) {
+      const lw = s.offsetWidth || 30;
+      const x = (parseFloat(s.style.left) / 100) * w;
+      const left = clamp(x - lw / 2, -INSET, Math.max(-INSET, w + INSET - lw)); // keep edge labels inside the stage
+      s.style.transform = `translateX(${(left - x).toFixed(1)}px)`;
+      const fits = left >= lastRight + 10;
+      s.style.visibility = fits ? 'visible' : 'hidden';
+      if (fits) lastRight = left + lw;
+    }
+  }
+
+  // ---------------- rendering ----------------
+  function measure() {
+    const rect = el.screen.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(rect.width * dpr));
+    const h = Math.max(1, Math.round(rect.height * dpr));
+    if (el.canvas.width !== w || el.canvas.height !== h) {
+      el.canvas.width = w;
+      el.canvas.height = h;
+      state.drawnPos = -1;
+      if (!state.ready) {
+        ctx.fillStyle = getComputedStyle(root).getPropertyValue('--soft').trim() || '#e9ebef';
+        ctx.fillRect(0, 0, w, h);
+        if (state.loadingBmp) drawCover(state.loadingBmp, 1);
+      }
+    }
+    state.trackW = el.track.clientWidth;
+    thinYears();
+    if (state.ready) paint(true);
+  }
+  new ResizeObserver(() => measure()).observe(el.screen);
+  new ResizeObserver(() => { state.trackW = el.track.clientWidth; thinYears(); if (state.ready) updateScrubberUI(state.pos, true); }).observe(el.scrubber);
+
+  function drawCover(img, alpha) {
+    const cw = el.canvas.width, ch = el.canvas.height;
+    const iw = img.width, ih = img.height;
+    const s = Math.max(cw / iw, ch / ih);
+    const dw = iw * s, dh = ih * s;
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(img, (cw - dw) / 2, 0, dw, dh); // top-aligned: the top of a page matters most
+    ctx.globalAlpha = 1;
+  }
+
+  function drawLoadingFrame(bmp, i) {
+    if (state.ready) return;
+    state.loadingBmp = bmp;
+    ctx.imageSmoothingQuality = 'high';
+    drawCover(bmp, 1);
+    const f = state.frames[i];
+    if (f) el.frameTs.textContent = f.ts;
+  }
+
+  function paint(force) {
+    const n = state.bitmaps.length;
+    if (!n) return;
+    const p = clamp(state.pos, 0, n - 1);
+    if (!force && Math.abs(p - state.drawnPos) < 0.0004) return;
+    state.drawnPos = p;
+    const i = Math.floor(p);
+    const f = p - i;
+    ctx.imageSmoothingQuality = 'high';
+    drawCover(state.bitmaps[i], 1);
+    if (f > 0.002 && i + 1 < n) drawCover(state.bitmaps[i + 1], f);
+    updateScrubberUI(p, force);
+  }
+
+  function updateScrubberUI(p, force) {
+    const n = state.bitmaps.length;
+    const w = state.trackW || el.track.clientWidth;
+    const ratio = n > 1 ? p / (n - 1) : 0;
+    const x = ratio * w;
+    el.thumb.style.transform = `translate3d(${x}px,0,0)`;
+    el.fill.style.transform = `scaleX(${ratio})`;
+    const idx = Math.round(p);
+    if (idx !== state.shownIndex || force) {
+      state.shownIndex = idx;
+      const fr = state.frames[idx];
+      const d = tsDate(fr.ts);
+      el.thumbLabel.textContent = fmtDay.format(d);
+      el.frameTs.textContent = fr.ts;
+      el.frameLink.href = fr.archiveUrl;
+      el.frameLinkText.textContent = 'Open capture';
+      el.scrubber.setAttribute('aria-valuenow', String(idx));
+      el.scrubber.setAttribute('aria-valuetext', fmtDay.format(d));
+      el.canvas.setAttribute('aria-label', `${state.target.display} as archived on ${fmtDay.format(d)}`);
+      const year = fr.ts.slice(0, 4);
+      for (const s of el.years.children) s.classList.toggle('active', s.textContent === year);
+    }
+    const lw = el.thumbLabel.offsetWidth;
+    const lx = clamp(x - lw / 2, -INSET, Math.max(-INSET, w + INSET - lw));
+    el.thumbLabel.style.transform = `translate3d(${lx}px,0,0)`;
+  }
+
+  // ---------------- motion loop ----------------
+  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  function loop(now) {
+    state.raf = 0;
+    const dt = Math.min(0.05, (now - (state.lastTime || now)) / 1000);
+    state.lastTime = now;
+    const n = state.bitmaps.length;
+    let again = false;
+    if (state.playing) {
+      state.playPos += dt / (PLAY_MS_PER_FRAME / 1000);
+      if (state.playPos >= n - 1) {
+        state.playPos = n - 1;
+        stopPlay();
+      } else {
+        again = true;
+      }
+      const i = Math.floor(state.playPos);
+      const frac = state.playPos - i;
+      const t = clamp((frac - HOLD) / (1 - HOLD), 0, 1);
+      state.pos = state.goal = i + easeInOut(t);
+    } else {
+      const diff = state.goal - state.pos;
+      if (reduceMotion || Math.abs(diff) < 0.0008) {
+        state.pos = state.goal;
+      } else {
+        const k = 1 - Math.exp(-dt * (state.dragging ? 24 : 11));
+        state.pos += diff * k;
+        again = true;
+      }
+    }
+    paint(false);
+    if (again) kick();
+  }
+  function kick() {
+    if (!state.raf) {
+      state.lastTime = performance.now();
+      state.raf = requestAnimationFrame(loop);
+    }
+  }
+  function setGoal(v, snap) {
+    const n = state.bitmaps.length;
+    if (!state.ready || n < 2) return;
+    state.goal = clamp(snap ? Math.round(v) : v, 0, n - 1);
+    kick();
+  }
+
+  // ---------------- play ----------------
+  const ICON_PLAY = '<path d="M4 2.5v11l9-5.5z"/>';
+  const ICON_PAUSE = '<path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/>';
+  function startPlay() {
+    const n = state.bitmaps.length;
+    if (!state.ready || n < 2) return;
+    if (state.goal >= n - 1 - 0.01) { state.pos = state.goal = 0; }
+    state.playPos = Math.round(state.goal) === state.goal ? state.goal : Math.round(state.goal);
+    state.playing = true;
+    el.playIcon.innerHTML = ICON_PAUSE;
+    el.playBtn.setAttribute('aria-label', 'Pause timelapse');
+    kick();
+  }
+  function stopPlay() {
+    if (!state.playing) return;
+    state.playing = false;
+    el.playIcon.innerHTML = ICON_PLAY;
+    el.playBtn.setAttribute('aria-label', 'Play timelapse');
+    if (state.bitmaps.length) setGoal(state.pos, true);
+  }
+  el.playBtn.addEventListener('click', () => (state.playing ? stopPlay() : startPlay()));
+
+  // ---------------- input: scrubber ----------------
+  function posFromEvent(e) {
+    const r = el.track.getBoundingClientRect();
+    const n = state.bitmaps.length;
+    return clamp((e.clientX - r.left) / r.width, 0, 1) * (n - 1);
+  }
+  el.scrubber.addEventListener('pointerdown', (e) => {
+    if (!state.ready || state.bitmaps.length < 2 || e.button > 0) return;
+    stopPlay();
+    state.dragging = true;
+    el.scrubber.classList.add('dragging');
+    el.scrubber.setPointerCapture(e.pointerId);
+    el.scrubber.focus({ preventScroll: true });
+    setGoal(posFromEvent(e));
+    e.preventDefault();
+  });
+  el.scrubber.addEventListener('pointermove', (e) => {
+    if (!state.dragging) return;
+    setGoal(posFromEvent(e));
+  });
+  const endDrag = (e) => {
+    if (!state.dragging) return;
+    state.dragging = false;
+    el.scrubber.classList.remove('dragging');
+    try { el.scrubber.releasePointerCapture(e.pointerId); } catch {}
+    setGoal(state.goal, true);
+  };
+  el.scrubber.addEventListener('pointerup', endDrag);
+  el.scrubber.addEventListener('pointercancel', endDrag);
+  el.scrubber.addEventListener('lostpointercapture', endDrag);
+
+  function step(delta) {
+    stopPlay();
+    setGoal(Math.round(state.goal) + delta, true);
+  }
+  el.scrubber.addEventListener('keydown', (e) => {
+    if (!state.ready) return;
+    const n = state.bitmaps.length;
+    const map = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 5, PageDown: -5 };
+    if (e.key in map) { step(map[e.key]); e.preventDefault(); }
+    else if (e.key === 'Home') { stopPlay(); setGoal(0, true); e.preventDefault(); }
+    else if (e.key === 'End') { stopPlay(); setGoal(n - 1, true); e.preventDefault(); }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (el.viewer.hidden || !state.ready) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.code === 'Space' && tag !== 'button') { state.playing ? stopPlay() : startPlay(); e.preventDefault(); }
+    else if (e.target !== el.scrubber && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && tag !== 'button') {
+      step(e.key === 'ArrowRight' ? 1 : -1); e.preventDefault();
+    }
+  });
+
+  // horizontal trackpad swipes over the frame scrub too
+  let wheelSnap = 0;
+  el.screen.addEventListener('wheel', (e) => {
+    if (!state.ready || state.bitmaps.length < 2) return;
+    const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+    if (!dx) return;
+    e.preventDefault();
+    stopPlay();
+    const unit = e.deltaMode === 1 ? 0.25 : 1 / 160;
+    setGoal(state.goal + dx * unit);
+    clearTimeout(wheelSnap);
+    wheelSnap = setTimeout(() => setGoal(state.goal, true), 160);
+  }, { passive: false });
+
+  // ---------------- forms ----------------
+  el.heroForm.addEventListener('submit', (e) => { e.preventDefault(); startSearch(el.heroInput.value, state.range); });
+  el.miniForm.addEventListener('submit', (e) => { e.preventDefault(); startSearch(el.miniInput.value, state.range); });
+  el.heroInput.addEventListener('input', () => { el.heroError.textContent = ''; });
+  el.brand.addEventListener('click', showHome);
+
+  // ---------------- sample site renderer (preview mode) ----------------
+  // Draws an invented company homepage whose design follows the web's
+  // broad eras, so the slider has something real-looking to blend between.
+  function seeded(seed) {
+    let s = (seed * 2654435761) >>> 0;
+    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  }
+  function rr(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+  function textLines(c, rnd, x, y, w, count, gap, h, color) {
+    c.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const lw = i === count - 1 ? w * (0.35 + rnd() * 0.3) : w * (0.82 + rnd() * 0.18);
+      rr(c, x, y + i * gap, lw, h, h / 2);
+      c.fill();
+    }
+  }
+  function hsl(h, s, l, a = 1) { return `hsla(${h},${s}%,${l}%,${a})`; }
+
+  function drawSampleSite(c, year, idx) {
+    const W = 1280, H = 800;
+    const rnd = seeded(Math.floor(year * 12) + 7);
+    const y = Math.floor(year);
+    c.save();
+    c.clearRect(0, 0, W, H);
+    c.textBaseline = 'alphabetic';
+
+    if (year < 2007.5) {
+      // Early web: fixed width, tables, link lists, hit counter
+      const hue = 225 + (y - 2003) * 6;
+      c.fillStyle = '#c7cad1'; c.fillRect(0, 0, W, H);
+      const px = (W - 780) / 2;
+      c.fillStyle = '#ffffff'; c.fillRect(px, 0, 780, H);
+      c.fillStyle = hsl(hue, 58, 25); c.fillRect(px, 0, 780, 96);
+      c.fillStyle = '#ffffff'; c.font = 'italic bold 36px "Times New Roman", Times, serif';
+      c.fillText('Sample Co.', px + 24, 60);
+      c.font = '12px Verdana, sans-serif'; c.fillStyle = hsl(hue, 30, 85);
+      c.fillText('Home | About Us | Products | Contact', px + 520, 84);
+      c.fillStyle = '#e4e7ef'; c.fillRect(px, 96, 780, 26);
+      c.fillStyle = '#0000cc'; c.font = '12px Verdana, sans-serif';
+      ['News', 'Downloads', 'Guestbook', 'Links', 'Site map'].forEach((t, i) => { c.fillText(t, px + 18 + i * 92, 114); c.fillRect(px + 18 + i * 92, 116, c.measureText(t).width, 1); });
+      c.fillStyle = '#eef0f6'; c.fillRect(px, 122, 170, H - 122);
+      c.fillStyle = '#333'; c.font = 'bold 12px Verdana, sans-serif'; c.fillText('Navigation', px + 14, 150);
+      for (let i = 0; i < 9; i++) { c.fillStyle = '#0000cc'; c.fillRect(px + 14, 166 + i * 22, 90 + rnd() * 50, 7); }
+      c.fillStyle = hsl(hue, 58, 25); c.font = 'bold 30px "Times New Roman", Times, serif';
+      c.fillText('Welcome to our homepage!', px + 196, 170);
+      textLines(c, rnd, px + 196, 190, 560, 4, 18, 7, '#9a9a9a');
+      // table of products
+      for (let r = 0; r < 2; r++) for (let k = 0; k < 3; k++) {
+        const x = px + 196 + k * 190, yy = 280 + r * 150;
+        c.strokeStyle = '#999'; c.lineWidth = 1; c.strokeRect(x + 0.5, yy + 0.5, 176, 136);
+        c.fillStyle = hsl((hue + 40 + (r * 3 + k) * 37) % 360, 45, 70); c.fillRect(x + 10, yy + 10, 70, 56);
+        textLines(c, rnd, x + 90, yy + 14, 76, 3, 14, 6, '#aaa');
+        textLines(c, rnd, x + 10, yy + 82, 156, 3, 14, 6, '#bbb');
+      }
+      if (y <= 2004) {
+        c.fillStyle = '#ffd400'; c.fillRect(px + 196, 600, 230, 34);
+        c.fillStyle = '#000'; c.font = 'bold 14px Verdana, sans-serif'; c.fillText('UNDER CONSTRUCTION!', px + 208, 622);
+      }
+      c.fillStyle = '#000'; c.fillRect(px + 14, 420, 140, 26);
+      c.fillStyle = '#39ff14'; c.font = '14px "Courier New", monospace';
+      c.fillText('Visitors: ' + String(4213 + Math.floor((year - 2003) * 9100)).padStart(6, '0'), px + 20, 438);
+      c.fillStyle = '#666'; c.font = '11px Verdana, sans-serif';
+      c.fillText(`© ${y} Sample Co. Best viewed at 800x600 in any browser.`, px + 196, 760);
+    } else if (year < 2012) {
+      // Glossy era: gradients, rounded tabs, big sign-up buttons
+      const hue = 205 + (y - 2008) * 9;
+      let g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, hsl(hue, 45, 90)); g.addColorStop(1, '#f9fbfe');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      const px = (W - 960) / 2;
+      g = c.createLinearGradient(0, 18, 0, 104); g.addColorStop(0, hsl(hue, 70, 62)); g.addColorStop(0.5, hsl(hue, 72, 50)); g.addColorStop(0.51, hsl(hue, 75, 44)); g.addColorStop(1, hsl(hue, 78, 38));
+      rr(c, px, 18, 960, 86, 12); c.fillStyle = g; c.fill();
+      c.fillStyle = '#fff'; c.font = 'bold 38px "Trebuchet MS", Arial, sans-serif';
+      c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 4; c.shadowOffsetY = 2;
+      c.fillText('Sample', px + 28, 74); c.fillStyle = hsl(hue + 100, 70, 72); c.fillText('Co', px + 168, 74);
+      c.shadowColor = 'transparent';
+      ['Home', 'Tour', 'Blog', 'Sign in'].forEach((t, i) => {
+        const tx = px + 560 + i * 98;
+        rr(c, tx, 58, 88, 46, 9); c.fillStyle = i === 0 ? '#ffffff' : 'rgba(255,255,255,.22)'; c.fill();
+        c.fillStyle = i === 0 ? hsl(hue, 70, 35) : '#fff'; c.font = 'bold 15px "Trebuchet MS", Arial, sans-serif'; c.fillText(t, tx + 18, 87);
+      });
+      rr(c, px, 120, 960, 330, 14); c.fillStyle = '#fff'; c.fill();
+      c.strokeStyle = hsl(hue, 40, 82); c.lineWidth = 1; c.stroke();
+      c.fillStyle = hsl(hue, 60, 30); c.font = 'bold 42px "Trebuchet MS", Arial, sans-serif';
+      c.fillText(y < 2010 ? 'Join the community!' : 'Share with your friends', px + 40, 200);
+      textLines(c, rnd, px + 40, 226, 400, 3, 22, 9, '#b9c2cc');
+      g = c.createLinearGradient(0, 320, 0, 384); g.addColorStop(0, '#9be15d'); g.addColorStop(0.5, '#6cc533'); g.addColorStop(1, '#4b9a1c');
+      rr(c, px + 40, 320, 260, 64, 22); c.fillStyle = g; c.fill();
+      rr(c, px + 46, 324, 248, 26, 13); c.fillStyle = 'rgba(255,255,255,.35)'; c.fill();
+      c.fillStyle = '#fff'; c.font = 'bold 22px "Trebuchet MS", Arial, sans-serif'; c.fillText('Sign up free!', px + 102, 361);
+      // product shot with reflection
+      rr(c, px + 540, 150, 380, 220, 8); c.fillStyle = hsl(hue, 30, 25); c.fill();
+      rr(c, px + 554, 164, 352, 192, 4); g = c.createLinearGradient(0, 164, 0, 356); g.addColorStop(0, hsl(hue, 60, 75)); g.addColorStop(1, hsl(hue + 30, 60, 55)); c.fillStyle = g; c.fill();
+      g = c.createLinearGradient(0, 372, 0, 440); g.addColorStop(0, hsl(hue, 30, 25, .25)); g.addColorStop(1, 'rgba(255,255,255,0)');
+      rr(c, px + 540, 372, 380, 66, 8); c.fillStyle = g; c.fill();
+      for (let k = 0; k < 3; k++) {
+        const x = px + k * 330;
+        rr(c, x, 474, 300, 220, 12); c.fillStyle = '#fff'; c.fill();
+        c.strokeStyle = hsl(hue, 30, 86); c.stroke();
+        const cg = c.createRadialGradient(x + 50, 516, 4, x + 56, 524, 30); cg.addColorStop(0, '#fff'); cg.addColorStop(1, hsl(hue + k * 60, 70, 55));
+        c.fillStyle = cg; c.beginPath(); c.arc(x + 56, 526, 28, 0, Math.PI * 2); c.fill();
+        c.fillStyle = hsl(hue, 50, 30); c.font = 'bold 20px "Trebuchet MS", Arial, sans-serif'; c.fillText(['Fast', 'Social', 'Free'][k], x + 100, 534);
+        textLines(c, rnd, x + 24, 580, 250, 4, 20, 8, '#c4ccd6');
+      }
+      c.fillStyle = '#8a96a3'; c.font = '13px Arial, sans-serif'; c.fillText(`© ${y} Sample Co. All rights reserved. RSS | Privacy | Terms`, px, 740);
+    } else if (year < 2016.5) {
+      // Flat design: full-bleed hero, bold flat colors, icon row
+      const palette = ['#1abc9c', '#3498db', '#e67e22', '#9b59b6', '#16a085'];
+      const col = palette[(y - 2012) % palette.length];
+      c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, H);
+      c.fillStyle = '#2c3e50'; c.font = '600 26px "Helvetica Neue", Helvetica, Arial, sans-serif'; c.fillText('sample', 80, 50);
+      c.fillStyle = col; c.fillText('co', 172, 50);
+      c.font = '15px "Helvetica Neue", Helvetica, Arial, sans-serif'; c.fillStyle = '#7f8c8d';
+      ['Product', 'Pricing', 'Blog', 'Support'].forEach((t, i) => c.fillText(t, 760 + i * 92, 46));
+      c.strokeStyle = col; c.lineWidth = 2; c.strokeRect(1124, 24, 100, 36);
+      c.fillStyle = col; c.font = '600 14px "Helvetica Neue", Helvetica, Arial, sans-serif'; c.fillText('Sign up', 1148, 47);
+      c.fillStyle = col; c.fillRect(0, 84, W, 420);
+      c.globalAlpha = 0.18; c.fillStyle = '#fff';
+      for (let k = 0; k < 6; k++) { c.beginPath(); const bx = rnd() * W, by = 84 + rnd() * 420, s = 120 + rnd() * 220; c.moveTo(bx, by); c.lineTo(bx + s, by + s * 0.4); c.lineTo(bx + s * 0.2, by + s); c.closePath(); c.fill(); }
+      c.globalAlpha = 1;
+      c.fillStyle = '#fff'; c.textAlign = 'center';
+      c.font = '300 60px "Helvetica Neue", Helvetica, Arial, sans-serif'; c.fillText(y < 2014 ? 'Simple. Beautiful. Yours.' : 'Everything you need, nothing you don’t.', W / 2, 270);
+      textLines(c, rnd, W / 2 - 260, 300, 520, 2, 22, 9, 'rgba(255,255,255,.6)');
+      c.fillStyle = '#fff'; c.fillRect(W / 2 - 110, 380, 220, 56);
+      c.fillStyle = col; c.font = '600 18px "Helvetica Neue", Helvetica, Arial, sans-serif'; c.fillText('Get started', W / 2, 415);
+      c.textAlign = 'left';
+      for (let k = 0; k < 3; k++) {
+        const cx = 260 + k * 380;
+        c.fillStyle = palette[(y - 2012 + k + 1) % palette.length];
+        c.beginPath(); c.arc(cx, 590, 40, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#fff'; c.fillRect(cx - 14, 576, 28, 28);
+        c.fillStyle = '#2c3e50'; c.font = '600 20px "Helvetica Neue", Helvetica, Arial, sans-serif'; c.textAlign = 'center';
+        c.fillText(['Design', 'Build', 'Launch'][k], cx, 668); c.textAlign = 'left';
+        textLines(c, rnd, cx - 120, 690, 240, 2, 18, 7, '#d0d7de');
+      }
+    } else if (year < 2021.5) {
+      // SaaS era: left-aligned hero, pastel blobs, product card mockup
+      const hue = 250 - (y - 2017) * 18;
+      c.fillStyle = '#fafbfc'; c.fillRect(0, 0, W, H);
+      c.fillStyle = '#fff'; c.fillRect(0, 0, W, 76); c.fillStyle = 'rgba(16,24,40,.06)'; c.fillRect(0, 76, W, 1);
+      rr(c, 80, 22, 32, 32, 9); c.fillStyle = hsl(hue, 70, 58); c.fill();
+      c.fillStyle = '#101828'; c.font = '700 22px system-ui, -apple-system, "Segoe UI", sans-serif'; c.fillText('Sample', 124, 47);
+      c.fillStyle = '#475467'; c.font = '500 15px system-ui, -apple-system, "Segoe UI", sans-serif';
+      ['Product', 'Solutions', 'Resources', 'Pricing'].forEach((t, i) => c.fillText(t, 420 + i * 112, 45));
+      rr(c, 1080, 18, 120, 40, 8); c.fillStyle = hsl(hue, 70, 58); c.fill();
+      c.fillStyle = '#fff'; c.font = '600 15px system-ui, -apple-system, sans-serif'; c.fillText('Start free', 1104, 43);
+      c.fillStyle = '#101828'; c.font = '800 56px system-ui, -apple-system, "Segoe UI", sans-serif';
+      c.fillText('Work better,', 80, 210); c.fillText('together.', 80, 274);
+      textLines(c, rnd, 80, 306, 440, 3, 24, 10, '#c3c9d4');
+      rr(c, 80, 404, 170, 54, 10); c.fillStyle = hsl(hue, 70, 58); c.fill();
+      rr(c, 266, 404, 170, 54, 10); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = '#d0d5dd'; c.lineWidth = 1; c.stroke();
+      c.fillStyle = '#fff'; c.font = '600 17px system-ui, sans-serif'; c.fillText('Get started', 116, 437);
+      c.fillStyle = '#344054'; c.fillText('Watch demo', 300, 437);
+      [[860, 260, 220, hsl(hue, 90, 92)], [1010, 360, 170, hsl(hue + 60, 85, 90)], [780, 420, 150, hsl(hue - 50, 80, 91)]].forEach(([x, yy, r, f]) => {
+        c.fillStyle = f; c.beginPath(); c.ellipse(x, yy, r, r * 0.86, 0.5, 0, Math.PI * 2); c.fill();
+      });
+      c.shadowColor = 'rgba(16,24,40,.14)'; c.shadowBlur = 40; c.shadowOffsetY = 18;
+      rr(c, 720, 170, 420, 280, 14); c.fillStyle = '#fff'; c.fill();
+      c.shadowColor = 'transparent';
+      c.fillStyle = '#f2f4f7'; c.fillRect(720, 210, 420, 1);
+      for (let k = 0; k < 4; k++) {
+        rr(c, 744, 232 + k * 52, 28, 28, 7); c.fillStyle = hsl(hue + k * 30, 70, 85); c.fill();
+        textLines(c, rnd, 786, 238 + k * 52, 200 + rnd() * 100, 1, 0, 9, '#d0d5dd');
+        rr(c, 1060, 236 + k * 52, 54, 20, 10); c.fillStyle = k % 2 ? '#ecfdf3' : hsl(hue, 80, 95); c.fill();
+      }
+      for (let k = 0; k < 3; k++) {
+        const x = 80 + k * 380;
+        rr(c, x, 520, 350, 220, 12); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = '#eaecf0'; c.stroke();
+        rr(c, x + 1, 521, 348, 110, 12); c.fillStyle = hsl(hue + k * 40, 70, 94); c.fill();
+        textLines(c, rnd, x + 22, 652, 300, 3, 22, 9, '#d0d5dd');
+      }
+    } else {
+      // Current era: dark, oversized type, glow, bento grid
+      const hue = 265 - (y - 2022) * 22 + (year % 1) * 10;
+      c.fillStyle = '#0a0b0f'; c.fillRect(0, 0, W, H);
+      const glow = c.createRadialGradient(980, 160, 10, 980, 160, 520);
+      glow.addColorStop(0, hsl(hue, 90, 60, 0.55)); glow.addColorStop(1, 'rgba(10,11,15,0)');
+      c.fillStyle = glow; c.fillRect(0, 0, W, H);
+      c.fillStyle = '#fff'; c.font = '700 22px system-ui, -apple-system, sans-serif'; c.fillText('sample', 80, 52);
+      c.fillStyle = 'rgba(255,255,255,.62)'; c.font = '500 15px system-ui, -apple-system, sans-serif';
+      ['Platform', 'Customers', 'Docs', 'Company'].forEach((t, i) => c.fillText(t, 470 + i * 104, 50));
+      rr(c, 1086, 26, 114, 40, 20); c.fillStyle = '#fff'; c.fill();
+      c.fillStyle = '#0a0b0f'; c.font = '600 15px system-ui, sans-serif'; c.fillText('Get access', 1104, 51);
+      const tg = c.createLinearGradient(80, 140, 900, 300); tg.addColorStop(0, '#ffffff'); tg.addColorStop(1, hsl(hue, 60, 78));
+      c.fillStyle = tg; c.font = '700 88px system-ui, -apple-system, "Segoe UI", sans-serif';
+      c.fillText(y < 2024 ? 'Built for' : 'Made for', 76, 210); c.fillText('what’s next.', 76, 304);
+      textLines(c, rnd, 80, 342, 470, 2, 26, 10, 'rgba(255,255,255,.22)');
+      rr(c, 80, 418, 168, 52, 26); c.fillStyle = hsl(hue, 85, 66); c.fill();
+      c.fillStyle = '#0a0b0f'; c.font = '600 16px system-ui, sans-serif'; c.fillText('Start building', 108, 450);
+      const cells = [[80, 510, 520, 230], [620, 510, 270, 230], [910, 510, 290, 108], [910, 632, 290, 108]];
+      cells.forEach(([x, yy, w, h], k) => {
+        rr(c, x, yy, w, h, 20); c.fillStyle = '#14161d'; c.fill();
+        c.strokeStyle = 'rgba(255,255,255,.08)'; c.lineWidth = 1; c.stroke();
+        if (k === 0) {
+          for (let b = 0; b < 12; b++) { const bh = 30 + rnd() * 130; rr(c, x + 30 + b * 38, yy + h - 28 - bh, 22, bh, 6); c.fillStyle = hsl(hue + b * 4, 70, 60, 0.35 + b / 24); c.fill(); }
+        } else {
+          textLines(c, rnd, x + 22, yy + 26, w - 60, k === 1 ? 4 : 2, 22, 9, 'rgba(255,255,255,.16)');
+        }
+      });
+    }
+    c.restore();
+  }
+
+  // ---------------- boot ----------------
+  renderRangeGroups();
+  renderExamples();
+  (async () => {
+    const mode = await modeReady;
+    if (mode !== 'live') return;
+    try {
+      const q = new URLSearchParams(location.search);
+      const u = q.get('url');
+      if (u) startSearch(u, rangeOf(q.get('range') || 'all').key);
+    } catch {}
+  })();
+})();
+</script>
